@@ -5,9 +5,11 @@ use Castor\Attribute\AsOption;
 use Castor\Attribute\AsTask;
 use Symfony\Component\Console\Input\InputOption;
 
+use function Castor\context;
 use function Castor\finder;
 use function Castor\io;
 use function Castor\capture;
+use function Castor\run;
 
 #[AsTask(description: 'Organize music files into a target directory by artist and album')]
 function organize(
@@ -121,4 +123,90 @@ function getAudioTags(\SplFileInfo $file): ?array
 function sanitizePath(string $value): string
 {
     return trim(preg_replace('/[\/\\\:*?"<>|]/', '_', $value));
+}
+
+#[AsTask(description: 'Extract album art from music files and save as cover.jpg in each album directory')]
+function extractCovers(
+    #[AsArgument(description: 'Root music directory')]
+    string $directory,
+    #[AsOption(mode: InputOption::VALUE_NONE, description: 'Preview changes without writing anything')]
+    bool $dryRun,
+    #[AsOption(mode: InputOption::VALUE_NONE, description: 'Overwrite existing cover images')]
+    bool $force,
+): void {
+    if (!is_dir($directory) || !is_readable($directory)) {
+        io()->error(sprintf('Directory "%s" does not exist or is not readable.', $directory));
+
+        return;
+    }
+
+    $files = finder()
+        ->files()
+        ->in($directory)
+        ->name('/\.(mp3|flac|ogg|m4a|wav|aac)$/i')
+        ->sortByName();
+
+    $albumFirstFiles = [];
+    foreach ($files as $file) {
+        $albumFirstFiles[$file->getPath()] ??= $file;
+    }
+
+    io()->title(sprintf('Extracting album art%s', $dryRun ? ' (dry run)' : ''));
+    io()->progressStart(count($albumFirstFiles));
+
+    foreach ($albumFirstFiles as $dir => $firstFile) {
+        $coverPath = $dir . '/cover.jpg';
+
+        if (!$force && file_exists($coverPath)) {
+            io()->progressAdvance();
+            continue;
+        }
+
+        if ($dryRun) {
+            io()->writeln(sprintf('%s → %s', $firstFile->getPathname(), $coverPath));
+            io()->progressAdvance();
+            continue;
+        }
+
+        if (!extractCoverArt($firstFile, $coverPath)) {
+            io()->warning(sprintf('No cover art found in "%s".', $firstFile->getPathname()));
+        }
+
+        io()->progressAdvance();
+    }
+
+    io()->progressFinish();
+    io()->success('Done');
+}
+
+function extractCoverArt(\SplFileInfo $file, string $destination): bool
+{
+    $probeResult = capture([
+        'ffprobe',
+        '-v', 'quiet',
+        '-print_format', 'json',
+        '-show_streams',
+        $file->getRealpath(),
+    ]);
+
+    $streams = json_decode($probeResult, true)['streams'] ?? [];
+    $videoStreams = array_filter($streams, fn($s) => ($s['codec_type'] ?? '') === 'video');
+
+    if ($videoStreams === []) {
+        return false;
+    }
+
+    run(
+        [
+            'ffmpeg',
+            '-i', $file->getRealpath(),
+            '-map', '0:v:0',
+            '-frames:v', '1',
+            '-y',
+            $destination,
+        ],
+        context: context()->withQuiet(true),
+    );
+
+    return true;
 }
