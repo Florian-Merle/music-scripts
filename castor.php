@@ -202,6 +202,8 @@ function extractCoverArt(\SplFileInfo $file, string $destination): bool
             '-i', $file->getRealpath(),
             '-map', '0:v:0',
             '-frames:v', '1',
+            '-vf', 'scale=500:500:force_original_aspect_ratio=decrease,format=yuv420p',
+            '-q:v', '2',
             '-y',
             $destination,
         ],
