@@ -11,7 +11,7 @@ use function Castor\io;
 use function Castor\capture;
 use function Castor\run;
 
-#[AsTask(description: 'Organize music files into a target directory by artist and album')]
+#[AsTask(namespace: 'music', name: 'organize', description: 'Organize music files into a target directory by artist and album')]
 function organize(
     #[AsArgument(description: 'Directory containing the music files to organize')]
     string $sourceDirectory,
@@ -125,7 +125,7 @@ function sanitizePath(string $value): string
     return trim(preg_replace('/[\/\\\:*?"<>|]/', '_', $value));
 }
 
-#[AsTask(description: 'Extract album art from music files and save as cover.jpg in each album directory')]
+#[AsTask(namespace: 'music', name: 'extract-covers', description: 'Extract album art from music files and save as cover.jpg in each album directory')]
 function extractCovers(
     #[AsArgument(description: 'Root music directory')]
     string $directory,
